@@ -3,15 +3,16 @@ import mediapipe as mp
 import pyautogui
 import numpy as np
 import math
+import time
 
-class FingerMouse:
+class AdvancedFingerMouse:
     def __init__(self):
         # Hand tracking setup
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(
             max_num_hands=1,
-            min_detection_confidence=0.9,
-            min_tracking_confidence=0.9
+            min_detection_confidence=0.8,
+            min_tracking_confidence=0.8
         )
         self.cap = cv2.VideoCapture(0)
         
@@ -19,13 +20,14 @@ class FingerMouse:
         self.screen_w, self.screen_h = pyautogui.size()
         
         # Control parameters
-        self.smoothing = 7
+        self.smoothing = 5
         self.ploc_x, self.ploc_y = 0, 0
         self.cloc_x, self.cloc_y = 0, 0
         self.frame_reduction = 100
-        self.click_thresh = 35
+        self.click_thresh = 30
         self.drag_thresh = 40
         self.scroll_thresh = 50
+        self.zoom_thresh = 50
         
         # State tracking
         self.dragging = False
@@ -38,14 +40,14 @@ class FingerMouse:
         landmarks = []
         
         if results.multi_hand_landmarks:
-            hand = results.multi_hand_hand_landmarks[0]
+            hand = results.multi_hand_landmarks[0]
             for id, lm in enumerate(hand.landmark):
                 h, w, _ = img.shape
                 cx, cy = int(lm.x * w), int(lm.y * h)
                 landmarks.append((id, cx, cy))
         return landmarks
 
-    def process_gestures(self, landmarks):
+    def process_gestures(self, landmarks, img):
         if not landmarks:
             return
 
@@ -78,7 +80,10 @@ class FingerMouse:
         
         # Scroll detection (middle finger and wrist)
         scroll_dist = math.hypot(middle_tip[0]-wrist[0], middle_tip[1]-wrist[1])
-
+        
+        # Zoom detection (index finger and thumb distance)
+        zoom_dist = math.hypot(index_tip[0]-thumb_tip[0], index_tip[1]-thumb_tip[1])
+        
         # Action handling
         if click_dist < self.click_thresh:
             if time.time() - self.last_click < 0.3:
@@ -99,23 +104,26 @@ class FingerMouse:
         if scroll_dist < self.scroll_thresh:
             scroll_amount = (wrist[1] - middle_tip[1]) / 10
             pyautogui.scroll(int(scroll_amount))
+        
+        if zoom_dist < self.zoom_thresh:
+            pyautogui.hotkey('ctrl', '+')  # Zoom in
+        elif zoom_dist > self.zoom_thresh + 20:
+            pyautogui.hotkey('ctrl', '-')  # Zoom out
 
+        # Visual feedback
+        cv2.circle(img, (index_tip[0], index_tip[1]), 15, (0,255,0), cv2.FILLED)
+        cv2.putText(img, "Finger Mouse Active", (10,30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+    
     def run(self):
         while True:
             success, img = self.cap.read()
             img = cv2.flip(img, 1)
             
             landmarks = self.get_hand_position(img)
-            self.process_gestures(landmarks)
+            self.process_gestures(landmarks, img)
             
-            # Visual feedback
-            if landmarks:
-                cv2.circle(img, (landmarks[8][1], landmarks[8][2]), 
-                          15, (0,255,0), cv2.FILLED)
-                cv2.putText(img, "Finger Mouse Active", (10,30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
-            
-            cv2.imshow("Finger Mouse", img)
+            cv2.imshow("Advanced Finger Mouse", img)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
@@ -123,5 +131,5 @@ class FingerMouse:
         cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    fm = FingerMouse()
+    fm = AdvancedFingerMouse()
     fm.run()
